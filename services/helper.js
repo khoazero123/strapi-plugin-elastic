@@ -404,7 +404,7 @@ module.exports = {
 
     if (!indicesMapConfigFile) return;
 
-    const map = require(mappingConfigFilePath);
+    const map = JSON.parse(fs.readFileSync(mappingConfigFilePath, {encoding: 'utf-8'}));
 
     return map;
   },
@@ -436,9 +436,7 @@ module.exports = {
         const targetModel = models.find((item) => item.model === model);
 
         if (targetModel && targetModel.enabled) {
-          const indexName = indexPrefix ? `${indexPrefix}-${targetModel.index}` : targetModel.index;
-          strapi.elastic.indicesMapping[targetModel.model] =
-            map[indexName];
+          strapi.elastic.indicesMapping[targetModel.model] = map;
         }
       }
     }
@@ -460,7 +458,7 @@ module.exports = {
 
             module.exports.generateMappings({
               targetModels: targetModel,
-              data: indexMap.body,
+              data: indexMap.body[indexName],
             });
 
             //

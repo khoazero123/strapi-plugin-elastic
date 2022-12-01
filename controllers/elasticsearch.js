@@ -84,7 +84,8 @@ module.exports = {
         },
       });
     } catch (e) {
-      return ctx.send({ data: null, total: 0, status });
+      strapi.log.error(e.message);
+      return ctx.send({ data: null, total: 0, status,  index: indexName });
     }
 
     if (data.statusCode !== 200) return ctx.badRequest();
@@ -115,6 +116,7 @@ module.exports = {
       data: res,
       total: count && count.body && count.body.count,
       status,
+      index: indexName
     });
   },
   migrateModels: async (ctx) => {
@@ -175,7 +177,7 @@ module.exports = {
     };
 
     if (mapping || indexConfig) {
-      options.body = mapping[indexName] || indexConfig;
+      options.body = mapping || indexConfig;
     }
 
     await strapi.elastic.indices.create(options);
