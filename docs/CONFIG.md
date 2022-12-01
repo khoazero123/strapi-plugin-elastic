@@ -13,6 +13,7 @@ module.exports = ({ env }) => ({
     fillByResponse: false,
     importLimit: 3000,
     removeExistIndexForMigration: false,
+    indexPrefix: env('ELASTICSEARCH_INDEX_PREFIX', 'my-index'),
     migration: {
       allowEntities: ['all'],
       disallowEntities: [],

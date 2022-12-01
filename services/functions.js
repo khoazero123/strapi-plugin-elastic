@@ -7,17 +7,18 @@ module.exports = {
    * @param {Object} query
    */
   find: async (model, query) => {
-    const { models } = strapi.config.elasticsearch;
+    const { models, setting: {indexPrefix} } = strapi.config.elasticsearch;
     const targetModel = models.find((item) => item.model === model);
 
     if (!targetModel) {
       strapi.log.error('model notfound');
       return;
     }
+    const indexName = indexPrefix ? `${indexPrefix}-${targetModel.index}` : targetModel.index;
 
     try {
       const res = await strapi.elastic.search({
-        index: targetModel.index,
+        index: indexName,
         ...query,
       });
       return res;
@@ -31,7 +32,7 @@ module.exports = {
    * @param {Object|number|string} param1
    */
   findOne: async (model, pk) => {
-    const { models } = strapi.config.elasticsearch;
+    const { models, setting: {indexPrefix} } = strapi.config.elasticsearch;
     const targetModel = models.find((item) => item.model === model);
 
     let id;
@@ -50,9 +51,10 @@ module.exports = {
       strapi.log.error('model notfound');
       return;
     }
+    const indexName = indexPrefix ? `${indexPrefix}-${targetModel.index}` : targetModel.index;
 
     const result = await strapi.elastic.get({
-      index: targetModel.index,
+      index: indexName,
       id,
     });
 
@@ -77,7 +79,7 @@ module.exports = {
       id_in = pk.id_in || [pk.id];
     }
 
-    const { models } = strapi.config.elasticsearch;
+    const { models, setting: {indexPrefix} } = strapi.config.elasticsearch;
     const targetModel = models.find((item) => item.model === model);
 
     if (!id_in) {
@@ -88,13 +90,14 @@ module.exports = {
       strapi.log.error('model notfound');
       return;
     }
+    const indexName = indexPrefix ? `${indexPrefix}-${targetModel.index}` : targetModel.index;
 
     const a = [];
 
     const body = id_in.map((id) => {
       return {
         delete: {
-          _index: targetModel.index,
+          _index: indexName,
           _type: '_doc',
           _id: id,
         },
@@ -113,7 +116,7 @@ module.exports = {
    * @param {Object} param1
    */
   createOrUpdate: async (model, { id, data }) => {
-    const { models } = strapi.config.elasticsearch;
+    const { models, setting: {indexPrefix} } = strapi.config.elasticsearch;
     const targetModel = await models.find((item) => item.model === model);
 
     if (!data) {
@@ -125,6 +128,7 @@ module.exports = {
       strapi.log.error('model notfound');
       return;
     }
+    const indexName = indexPrefix ? `${indexPrefix}-${targetModel.index}` : targetModel.index;
 
     const indexConfig = strapi.elastic.indicesMapping[targetModel.model];
 
@@ -143,12 +147,12 @@ module.exports = {
     let result;
     if (!id && data) {
       result = await strapi.elastic.index({
-        index: targetModel.index,
+        index: indexName,
         body: data,
       });
     } else if (id && data) {
       result = await strapi.elastic.update({
-        index: targetModel.index,
+        index: indexName,
         id: data[targetModel.pk || 'id'],
         body: {
           doc: data,
@@ -165,11 +169,12 @@ module.exports = {
    * @param {Object} param1
    */
   migrateById: async (model, { id, id_in, relations, conditions }) => {
-    const { models } = strapi.config.elasticsearch;
+    const { models, setting: {indexPrefix} } = strapi.config.elasticsearch;
 
     const targetModel = models.find((item) => item.model === model);
 
     if (!targetModel) return null;
+    const indexName = indexPrefix ? `${indexPrefix}-${targetModel.index}` : targetModel.index;
 
     id_in = id_in || [id];
 
@@ -185,7 +190,7 @@ module.exports = {
     const body = await data.flatMap((doc) => [
       {
         index: {
-          _index: targetModel.index,
+          _index: indexName,
           _id: doc[targetModel.pk || 'id'],
           _type: '_doc',
         },
@@ -214,20 +219,21 @@ module.exports = {
 
     const targetModel = models.find((item) => item.model === model);
 
-    let indexConfig = strapi.elastic.indicesMapping[targetModel.model];
-
-    const { indexExist } = await strapi.elastic.indices.exists({
-      index: targetModel.index,
-    });
-
-    indexConfig = indexExist ? indexConfig : null;
-
     if (
       !targetModel ||
       targetModel.enabled === false ||
       targetModel.migration === false
     )
       return;
+
+    let indexConfig = strapi.elastic.indicesMapping[targetModel.model];
+
+    let indexName = setting.indexPrefix ? `${setting.indexPrefix}-${targetModel.index}` : targetModel.index;
+    const {body: indexExist} = await strapi.elastic.indices.exists({
+      index: indexName,
+    });
+
+    indexConfig = indexExist ? indexConfig : null;
 
     let start = 0;
     strapi.elastic.log.debug(`Importing ${targetModel.model} to elasticsearch`);
@@ -273,7 +279,7 @@ module.exports = {
       const body = await result.flatMap((doc) => [
         {
           index: {
-            _index: targetModel.index,
+            _index: indexName,
             _id: doc[targetModel.pk || 'id'],
             _type: '_doc',
           },
@@ -300,7 +306,7 @@ module.exports = {
       // progress bar
       strapi.log.info(
         `(${start}/${index_length + 1}) Imported to ${
-          targetModel.index
+          indexName
         } index | sql query took ${parseInt(
           (end_sql - start_sql) / 1000
         )}s and insert to elasticsearch took ${parseInt(
@@ -325,7 +331,8 @@ module.exports = {
     if (setting.removeExistIndexForMigration) {
       models.forEach(async (model) => {
         if (model.enabled && model.migration) {
-          await strapi.elastic.indices.delete({ index: model.index });
+          const indexName = setting.indexPrefix ? `${setting.indexPrefix}-${model.index}` : model.index;
+          await strapi.elastic.indices.delete({ index: indexName });
         }
       });
     }

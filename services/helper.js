@@ -32,6 +32,7 @@ module.exports = ({ env }) => ({
   setting: {
     importLimit: 3000,
     removeExistIndexForMigration: false,
+    indexPrefix: env('ELASTICSEARCH_INDEX_PREFIX', 'my-index'),
   },
   models: ${JSON.stringify(modelsConfig, null, 2)}
 });`;
@@ -322,18 +323,19 @@ module.exports = {
     }
   },
   generateMappings: async ({ targetModels, data }) => {
-    //
+    const { setting: {indexPrefix} } = strapi.config.elasticsearch;
     if (!_.isArray(targetModels)) targetModels = [targetModels];
 
     const rootPath = path.resolve(__dirname, '../../../');
     const exportPath = `${rootPath}/exports/elasticsearch`;
 
     for (const targetModel of targetModels) {
+      const indexName = indexPrefix ? `${indexPrefix}-${targetModel.index}` : targetModel.index;
       let map = {};
       // get mapping;
       if (!data) {
         map = await strapi.elastic.indices.getMapping({
-          index: targetModel.index,
+          index: indexName,
         });
       }
 
@@ -351,20 +353,21 @@ module.exports = {
     }
   },
   checkEnableModels: async () => {
-    const { models } = strapi.config.elasticsearch;
+    const { models, setting: {indexPrefix} } = strapi.config.elasticsearch;
 
     const enableModels = models.filter((model) => model.enabled);
 
     await enableModels.forEach(async (model) => {
       const indicesMapping = {};
       // const indexName = model.index_postfix + model.index + model.index_postfix;
+      const indexName = indexPrefix ? `${indexPrefix}-${model.index}` : model.index;
       try {
         const indexMap = await strapi.elastic.indices.getMapping({
-          index: model.index,
+          index: indexName,
         });
 
         if (indexMap.status === 200) {
-          indicesMapping[model.index] = indexMap.body;
+          indicesMapping[indexName] = indexMap.body;
         }
       } catch (e) {}
 
@@ -410,7 +413,7 @@ module.exports = {
 
     const indexFilePattern = /([a-zA-z0-9-_]*)\.index\.json/;
 
-    const { models } = strapi.config.elasticsearch;
+    const { models, setting: {indexPrefix} } = strapi.config.elasticsearch;
 
     const rootPath = path.resolve(__dirname, '../../../');
 
@@ -433,8 +436,9 @@ module.exports = {
         const targetModel = models.find((item) => item.model === model);
 
         if (targetModel && targetModel.enabled) {
+          const indexName = indexPrefix ? `${indexPrefix}-${targetModel.index}` : targetModel.index;
           strapi.elastic.indicesMapping[targetModel.model] =
-            map[targetModel.index];
+            map[indexName];
         }
       }
     }
@@ -443,17 +447,16 @@ module.exports = {
       //
       if (!strapi.elastic.indicesMapping[targetModel.model]) {
         //
+        const indexName = indexPrefix ? `${indexPrefix}-${targetModel.index}` : targetModel.index;
         try {
-          //
-
           const indexMap = await strapi.elastic.indices.getMapping({
-            index: targetModel.index,
+            index: indexName,
           });
 
           if (indexMap.statusCode === 200) {
             //
             strapi.elastic.indicesMapping[targetModel.model] =
-              indexMap.body[targetModel.index];
+              indexMap.body[indexName];
 
             module.exports.generateMappings({
               targetModels: targetModel,
@@ -464,7 +467,7 @@ module.exports = {
           }
         } catch (e) {
           strapi.log.warn(
-            `There is an error to get mapping of ${targetModel.index} index from Elasticsearch`
+            `There is an error to get mapping of ${indexName} index from Elasticsearch`
           );
         }
       }

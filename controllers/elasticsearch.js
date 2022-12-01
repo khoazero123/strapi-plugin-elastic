@@ -34,15 +34,16 @@ module.exports = {
     return ctx.send(response);
   },
   fetchModel: async (ctx) => {
+    const { setting: {indexPrefix} } = strapi.config.elasticsearch;
     const { index, _start, _limit } = ctx.query;
     let data, count, map;
     let status = {};
-
+    const indexName = indexPrefix ? `${indexPrefix}-${index}` : index;
     try {
       //
-      count = await strapi.elastic.count({ index });
+      count = await strapi.elastic.count({ index: indexName });
       //
-      map = await strapi.elastic.indices.getMapping({ index });
+      map = await strapi.elastic.indices.getMapping({ index: indexName });
       //
       status = {
         deleted: false,
@@ -55,7 +56,7 @@ module.exports = {
         created: false,
       };
     }
-    if (status.created && !_.isEmpty(map.body[index])) {
+    if (status.created && !_.isEmpty(map.body[indexName])) {
       //
       status.hasMapping = true;
       //
@@ -66,7 +67,7 @@ module.exports = {
     }
     try {
       data = await strapi.elastic.search({
-        index,
+        index: indexName,
         size: _limit || 10,
         from: _limit * (_start - 1),
         body: {
@@ -161,19 +162,20 @@ module.exports = {
   createIndex: async (ctx) => {
     const { model } = ctx.request.body;
 
-    const { models } = strapi.config.elasticsearch;
+    const { models, setting: {indexPrefix} } = strapi.config.elasticsearch;
     const targetModel = models.find((item) => item.model === model);
 
     const mapping = await findMappingConfig({ targetModel });
 
     const indexConfig = strapi.elastic.indicesMapping[targetModel.model];
 
+    const indexName = indexPrefix ? `${indexPrefix}-${targetModel.index}` : targetModel.index;
     const options = {
-      index: targetModel.index,
+      index: indexName,
     };
 
     if (mapping || indexConfig) {
-      options.body = mapping[targetModel.index] || indexConfig;
+      options.body = mapping[indexName] || indexConfig;
     }
 
     await strapi.elastic.indices.create(options);
@@ -183,12 +185,12 @@ module.exports = {
   deleteIndex: async (ctx) => {
     const { model } = ctx.request.body;
 
-    const { models } = strapi.config.elasticsearch;
+    const { models, setting: {indexPrefix} } = strapi.config.elasticsearch;
     const targetModel = models.find((item) => item.model === model);
-
+    const indexName = indexPrefix ? `${indexPrefix}-${targetModel.index}` : targetModel.index;
     try {
       await strapi.elastic.indices.delete({
-        index: targetModel.index,
+        index: indexName,
       });
       return ctx.send({ success: true });
     } catch (e) {
